@@ -170,9 +170,10 @@ with st.sidebar.expander("AI Model Selection"):
 
 # Add new helper functions for model-agnostic API calls
 async def call_openai_api(prompt, model="gpt-4", system_message="You are a helpful assistant."):
-    """Generic function for OpenAI API calls."""
+    """Generic function for OpenAI API calls using the new API syntax."""
     try:
-        response = await openai.ChatCompletion.acreate(
+        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        response = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_message},
@@ -242,11 +243,12 @@ async def expand_prompt(original_prompt, step_type):
     Provide only the enhanced prompt without explanations."""
     
     try:
-        # Use OpenAI for prompt enhancement
-        return await call_openai_api(
+        enhanced_prompt = await call_openai_api(
             prompt=enhancement_prompt,
+            model="gpt-4",
             system_message="You are a prompt engineering expert."
         )
+        return enhanced_prompt if enhanced_prompt else original_prompt
     except Exception as e:
         logging.error(f"Error expanding prompt: {str(e)}")
         return original_prompt
