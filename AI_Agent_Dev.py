@@ -173,7 +173,7 @@ async def call_openai_api(prompt, model="gpt-4", system_message="You are a helpf
     """Generic function for OpenAI API calls using the new API syntax."""
     try:
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
-        response = await client.chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_message},
@@ -181,6 +181,7 @@ async def call_openai_api(prompt, model="gpt-4", system_message="You are a helpf
             ],
             temperature=0.7
         )
+        # The new API returns a ChatCompletion object directly, no need for await
         return response.choices[0].message.content.strip()
     except Exception as e:
         logging.error(f"OpenAI API error: {str(e)}")
@@ -228,9 +229,9 @@ async def call_claude_api(prompt):
         return None
 
 # Add this after your API helper functions (call_openai_api, call_gemini_api, call_claude_api)
-async def expand_prompt(original_prompt, step_type):
-    """Enhances the original prompt using AI prompt engineering best practices."""
-    enhancement_prompt = f"""As a prompt engineering expert, enhance the following {step_type} prompt. 
+async def expand_prompt(original_prompt):
+    """Enhance the original prompt using OpenAI."""
+    enhancement_prompt = f"""As a prompt engineering expert, enhance this prompt to be more specific, detailed, and effective.
     Apply these prompt engineering best practices:
     1. Add clear context and role definition
     2. Include specific output format requirements
@@ -243,6 +244,7 @@ async def expand_prompt(original_prompt, step_type):
     Provide only the enhanced prompt without explanations."""
     
     try:
+        # Since call_openai_api no longer needs await
         enhanced_prompt = await call_openai_api(
             prompt=enhancement_prompt,
             model="gpt-4",
@@ -621,7 +623,7 @@ for idx, step in enumerate(st.session_state.workflow_steps):
                     step_type = step["role"]  # Use the role as step type
                     
                     # Expand the prompt
-                    enhanced_prompt = asyncio.run(expand_prompt(step["prompt"], step_type))
+                    enhanced_prompt = asyncio.run(expand_prompt(step["prompt"]))
                     
                     # Update the prompt in session state
                     step["prompt"] = enhanced_prompt
