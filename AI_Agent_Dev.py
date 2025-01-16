@@ -5,9 +5,7 @@ import logging
 from datetime import datetime
 import os
 from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
+import toml
 
 # Configure Logging
 logging.basicConfig(
@@ -19,12 +17,22 @@ logging.basicConfig(
 # Configure Streamlit page and sidebar
 st.set_page_config(page_title="AI-Powered Code Builder", layout="wide", initial_sidebar_state="collapsed")
 
-# Get API keys from Streamlit secrets
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-CLAUDE_API_KEY = st.secrets["CLAUDE_API_KEY"]
+# Try to load secrets from the project directory
+try:
+    secrets_path = "/Users/ryangoutier/Desktop/Agents/ShocAgent/secrets.toml"
+    with open(secrets_path, 'r') as f:
+        secrets = toml.load(f)
+    OPENAI_API_KEY = secrets["OPENAI_API_KEY"]
+    GEMINI_API_KEY = secrets["GEMINI_API_KEY"]
+    CLAUDE_API_KEY = secrets["CLAUDE_API_KEY"]
+except:
+    # Load environment variables as fallback
+    load_dotenv()
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 
-# Update the sidebar API key inputs to use secrets
+# Update the sidebar API key inputs
 st.sidebar.header("API Configuration")
 OPENAI_API_KEY = st.sidebar.text_input(
     "OpenAI API Key", 
@@ -218,6 +226,31 @@ async def call_claude_api(prompt):
         st.error(f"Claude API error: {str(e)}")
         return None
 
+# Add this after your API helper functions (call_openai_api, call_gemini_api, call_claude_api)
+async def expand_prompt(original_prompt, step_type):
+    """Enhances the original prompt using AI prompt engineering best practices."""
+    enhancement_prompt = f"""As a prompt engineering expert, enhance the following {step_type} prompt. 
+    Apply these prompt engineering best practices:
+    1. Add clear context and role definition
+    2. Include specific output format requirements
+    3. Add constraints and quality criteria
+    4. Include relevant examples if needed
+    5. Ensure clear evaluation metrics
+    
+    Original prompt: {original_prompt}
+    
+    Provide only the enhanced prompt without explanations."""
+    
+    try:
+        # Use OpenAI for prompt enhancement
+        return await call_openai_api(
+            prompt=enhancement_prompt,
+            system_message="You are a prompt engineering expert."
+        )
+    except Exception as e:
+        logging.error(f"Error expanding prompt: {str(e)}")
+        return original_prompt
+
 # Rename the function to be model-agnostic
 async def generate_app_idea(prompt):
     """Generates app ideas using selected AI model."""
@@ -331,23 +364,27 @@ def get_step_html(step_number, title, model_name, description):
 # Make sure this CSS is defined before the functions
 st.markdown("""
 <style>
+    /* Base styles */
     .model-gemini {
         background-color: #e6f3ff;
         padding: 0.5rem;
         border-radius: 0.5rem;
         border: 1px solid #b3d9ff;
+        color: #000000;  /* Dark text for light mode */
     }
     .model-openai {
         background-color: #e6ffe6;
         padding: 0.5rem;
         border-radius: 0.5rem;
         border: 1px solid #b3ffb3;
+        color: #000000;  /* Dark text for light mode */
     }
     .model-claude {
         background-color: #fff2e6;
         padding: 0.5rem;
         border-radius: 0.5rem;
         border: 1px solid #ffd9b3;
+        color: #000000;  /* Dark text for light mode */
     }
     .step-container {
         background-color: #f8f9fa;
@@ -357,12 +394,14 @@ st.markdown("""
         height: 100%;
     }
     .card-title {
-        min-height: 50px;  /* Fixed height for title area */
+        min-height: 50px;
         margin-bottom: 10px;
+        color: #000000;  /* Dark text for light mode */
     }
     
     .card-description {
-        min-height: 60px;  /* Fixed height for description area */
+        min-height: 60px;
+        color: #000000;  /* Dark text for light mode */
     }
     
     .workflow-card {
@@ -377,6 +416,7 @@ st.markdown("""
         border-radius: 4px;
         display: inline-block;
         background-color: #f8f9fa;
+        color: #000000;  /* Dark text for light mode */
     }
     
     /* Model-specific border colors */
@@ -387,6 +427,45 @@ st.markdown("""
     hr.model-gemini { border-color: #1a73e8; }
     hr.model-openai { border-color: #10a37f; }
     hr.model-claude { border-color: #7c3aed; }
+
+    /* Specific styling for the model indicator text */
+    .model-name-text {
+        color: #000000 !important;  /* Always dark text */
+    }
+    
+    /* Dark mode styles */
+    @media (prefers-color-scheme: dark) {
+        .card-title,
+        .card-description,
+        .model-indicator,
+        .model-gemini,
+        .model-openai,
+        .model-claude,
+        div[data-testid="stMarkdownContainer"] p,
+        div[data-testid="stSelectbox"] div {
+            color: #ffffff !important;
+        }
+        
+        /* Keep model name text black even in dark mode */
+        .model-name-text {
+            color: #000000 !important;
+        }
+        
+        .workflow-card {
+            background-color: rgba(255, 255, 255, 0.1);  /* Slightly lighter background in dark mode */
+        }
+        
+        .model-gemini,
+        .model-openai,
+        .model-claude {
+            background-color: rgba(255, 255, 255, 0.05);  /* Subtle background in dark mode */
+        }
+
+        /* Specifically target the model text in selectboxes */
+        div[data-testid="stSelectbox"] div[role="button"] {
+            color: #ffffff !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -394,27 +473,43 @@ st.markdown("""
 st.write("## Workflow Preview")
 st.write("Here's how your app will be built:")
 
-# Define default prompts at the beginning of the file
-default_ideation = """You are an expert Streamlit app creator with a proven track record of developing successful, 
-highly monetizable Python-based web applications. Generate ONE innovative Streamlit app idea that:
-1. Leverages Streamlit's strengths for rapid deployment and interactive data applications
-2. Can be implemented efficiently in Python
-3. Has clear monetization potential
-4. Provides unique value through AI/ML capabilities
-5. Can scale effectively using Streamlit's cloud infrastructure"""
-
-default_feedback = """Review this app idea and provide BRIEF, SPECIFIC feedback in 3-4 bullet points. 
-Focus only on critical improvements or concerns. Be specific and concise."""
-
-default_implementation = """Please write Python code to implement the following app idea.
-Please provide only the implementation code with clear comments.
-Focus on creating a working prototype that demonstrates the core functionality."""
-
-default_enhancement = """Review and enhance the following Python code. Focus on:
-1. Code optimization and efficiency
-2. Best practices and patterns
-3. Error handling and robustness
-4. Documentation and clarity"""
+# Add role definitions and their default prompts
+ROLE_PROMPTS = {
+    "App Ideation": """You are an expert Streamlit app creator with a proven track record of developing successful, 
+    highly monetizable Python-based web applications. Generate ONE innovative Streamlit app idea that:
+    1. Leverages Streamlit's strengths for rapid deployment and interactive data applications
+    2. Can be implemented efficiently in Python
+    3. Has clear monetization potential
+    4. Provides unique value through AI/ML capabilities
+    5. Can scale effectively using Streamlit's cloud infrastructure""",
+    
+    "Product Review": """Review this app idea and provide BRIEF, SPECIFIC feedback in 3-4 bullet points. 
+    Focus only on critical improvements or concerns. Be specific and concise.""",
+    
+    "Implementation": """Please write Python code to implement the following app idea.
+    Please provide only the implementation code with clear comments.
+    Focus on creating a working prototype that demonstrates the core functionality.""",
+    
+    "Enhancement": """Review and enhance the following Python code. Focus on:
+    1. Code optimization and efficiency
+    2. Best practices and patterns
+    3. Error handling and robustness
+    4. Documentation and clarity""",
+    
+    "Code Debugger": """As an expert code debugger, analyze the following code for:
+    1. Potential bugs and edge cases
+    2. Memory leaks and performance bottlenecks
+    3. Error handling gaps
+    4. Security vulnerabilities
+    Provide specific recommendations for fixes.""",
+    
+    "Trend Analyser": """As a technology trend analyst, evaluate this concept considering:
+    1. Current market trends and demand
+    2. Competitive landscape
+    3. Future scalability potential
+    4. Technical feasibility
+    5. Innovation opportunities"""
+}
 
 # Initialize workflow steps after defining default prompts
 if "workflow_steps" not in st.session_state:
@@ -425,7 +520,8 @@ if "workflow_steps" not in st.session_state:
             "description": "Generates innovative app concept based on your description",
             "model": "gemini",
             "prompt": "",
-            "default_prompt": default_ideation
+            "role": "App Ideation",
+            "default_prompt": ROLE_PROMPTS["App Ideation"]
         },
         {
             "id": 2,
@@ -433,7 +529,8 @@ if "workflow_steps" not in st.session_state:
             "description": "Analyzes feasibility and provides strategic feedback",
             "model": "gemini",
             "prompt": "",
-            "default_prompt": default_feedback
+            "role": "Product Review",
+            "default_prompt": ROLE_PROMPTS["Product Review"]
         },
         {
             "id": 3,
@@ -441,7 +538,8 @@ if "workflow_steps" not in st.session_state:
             "description": "Generates working code implementation",
             "model": "claude",
             "prompt": "",
-            "default_prompt": default_implementation
+            "role": "Implementation",
+            "default_prompt": ROLE_PROMPTS["Implementation"]
         },
         {
             "id": 4,
@@ -449,7 +547,8 @@ if "workflow_steps" not in st.session_state:
             "description": "Optimizes and improves the code",
             "model": "openai",
             "prompt": "",
-            "default_prompt": default_enhancement
+            "role": "Enhancement",
+            "default_prompt": ROLE_PROMPTS["Enhancement"]
         }
     ]
 
@@ -459,19 +558,15 @@ cols = st.columns(num_steps)
 
 for idx, step in enumerate(st.session_state.workflow_steps):
     with cols[idx]:
-        # Step container with remove button
-        st.markdown(
-            f"""
-            <div class="workflow-card model-{step['model']}">
-                <div class="card-header">
-                    <div class="card-title">{step['title']}</div>
-                    <hr class="model-{step['model']}" style="margin: 8px 0; border-width: 1px;">
-                    <div class="card-description">{step['description']}</div>
-                    <div class="model-indicator">Using: {step['model'].upper()}</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
+        # Add role selection before the model selection
+        current_role = step.get("role", step["title"].split(" ")[-1])  # Get current role or default from title
+        
+        # Role selection
+        selected_role = st.selectbox(
+            "Select Role",
+            options=list(ROLE_PROMPTS.keys()),
+            index=list(ROLE_PROMPTS.keys()).index(current_role) if current_role in ROLE_PROMPTS else 0,
+            key=f"role_select_{step['id']}"
         )
         
         # Model selection for this step
@@ -480,6 +575,30 @@ for idx, step in enumerate(st.session_state.workflow_steps):
             options=["gemini", "openai", "claude"],
             index=["gemini", "openai", "claude"].index(step["model"]),
             key=f"model_select_{step['id']}"
+        )
+        
+        # Update step properties when role changes
+        if selected_role != current_role:
+            step["role"] = selected_role
+            step["title"] = f"🔧 {selected_role}"  # Update title with new role
+            step["default_prompt"] = ROLE_PROMPTS[selected_role]  # Update default prompt
+            step["prompt"] = ""  # Reset custom prompt
+            
+        # Card styling
+        st.markdown(
+            f"""
+            <div class="workflow-card model-{step['model']}">
+                <div class="card-header">
+                    <div class="card-title">{step['title']}</div>
+                    <hr class="model-{step['model']}" style="margin: 8px 0; border-width: 1px;">
+                    <div class="card-description">{step['description']}</div>
+                    <div class="model-indicator">
+                        <span class="model-name-text">Using: {step['model'].upper()}</span>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
         
         # Custom prompt for this step
@@ -491,6 +610,20 @@ for idx, step in enumerate(st.session_state.workflow_steps):
             key=f"prompt_{step['id']}",
             height=150
         )
+        
+        # Only show expand button if there's text in the prompt
+        if step["prompt"].strip():
+            if st.button("✨ Expand", key=f"expand_{step['id']}", use_container_width=True):
+                with st.spinner("Enhancing prompt..."):
+                    # Get step type for context
+                    step_type = step["role"]  # Use the role as step type
+                    
+                    # Expand the prompt
+                    enhanced_prompt = asyncio.run(expand_prompt(step["prompt"], step_type))
+                    
+                    # Update the prompt in session state
+                    step["prompt"] = enhanced_prompt
+                    st.rerun()
         
         # Remove button for this step
         if st.button("❌ Remove Step", key=f"remove_{step['id']}", use_container_width=True):
